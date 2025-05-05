@@ -37,7 +37,7 @@ class BarFits:
         num_rows = (len(selected_bioassays) + ncol - 1) // ncol  # Ceiling division
 
         # Set up the figure and axes for subplots
-        fig, axes = plt.subplots(nrows=num_rows, ncols=ncol, figsize=(15, num_rows * 2), sharex=True)
+        fig, axes = plt.subplots(nrows=num_rows, ncols=ncol, figsize=(15, num_rows * 4), sharex=True)
         axes = axes.flatten()  # Flatten the 2D array of axes to 1D
 
         # Define a color palette
@@ -60,20 +60,30 @@ class BarFits:
                 continue
 
             # Set bar width
-            bar_width = 0.2
+            bar_width = 0.6
+            # Set bar width based on the number of populations
+            #total_populations = len(selected_populations)
+            #bar_width = max(0.4, 0.8 / total_populations)  # Ensure the width does not exceed 0.8
+
 
             # Plotting the bar plot for each population with offsets
             for j, (conc, mortality, sem) in enumerate(bar_data[:max_populations_per_subplot]):
                 # Calculate the x position for each population
                 x_positions = np.arange(len(conc)) + (j * bar_width)  # Offset each population by bar_width
-                axes[i].bar(x_positions, mortality, yerr=sem, capsize=5, 
-                             color=CBPALETTE[j % len(CBPALETTE)], alpha=0.7, 
-                             width=bar_width, label=selected_populations[j])
+                axes[i].bar(x_positions, mortality, yerr=sem, 
+                            capsize=5,  
+                            lw = 3,
+                            color=CBPALETTE[j % len(CBPALETTE)],
+                            alpha=0.7,
+                            width=bar_width,
+                            edgecolor= 'black',
+                            label=selected_populations[j])
 
             # Adding labels and title for each subplot
             axes[i].set_title(f'{btProtein}', fontsize=14)
-            axes[i].set_ylabel(ylabel, fontsize=12)
-            axes[i].grid(True, linestyle='--', alpha=0.7)  # Styled grid
+            axes[i].set_ylabel(ylabel, fontsize=16, fontweight='bold', fontname='Arial')
+            axes[i].tick_params(axis='both', which='major', labelsize=12)
+            axes[i].grid(True, linestyle='', alpha=0.7)  # Styled grid
 
             # Set x-ticks to the unique concentration values
             unique_conc = np.unique(np.concatenate([bar_data[k][0] for k in range(len(bar_data))]))
@@ -93,7 +103,12 @@ class BarFits:
 
         # Adding common x-label to all axes in the last row
         for ax in axes[-ncol:]:  # Iterate over the last row
-            ax.set_xlabel(xlabel, fontsize=12)
+            ax.set_xlabel(xlabel, fontsize=16, fontweight='bold', fontname='Arial')
+            ax.tick_params(axis='both', which='major', labelsize=14)  # Change font size for x-axis
 
-        plt.tight_layout(rect=[0, 0, 0.85, 1])  # Adjust layout to make space for the legend
+            
+
+        #plt.tight_layout(rect=[0, 0, 0.85, 1])  # Adjust layout to make space for the legend
+        plt.tight_layout()  # Adjust layout to make space for the legend
+ 
         return fig, axes  # Return the figure and axes
