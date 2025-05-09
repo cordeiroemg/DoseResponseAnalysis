@@ -639,6 +639,20 @@ class HillCurve:
 
         return lower_bound, upper_bound
 
+    @property
+    def fitted_values(self):
+        return self.evaluate(self.cs, self.midpoint, self.slope, self.bottom, self.top, self._inhibitory_or_mortality)
+    
+    @property
+    def residuals(self):
+        return self.fs - self.fitted_values
+    
+    @property
+    def coefficients(self):
+        return numpy.array([self.midpoint, self.slope, self.bottom, self.top])
+
+
+
 def concentrationRange(bottom, top, npoints=200, extend=0.1):
     """Logarithmically spaced concentrations for plotting.
 
