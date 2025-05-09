@@ -218,104 +218,102 @@ class CurveFits:
               numBoot=None,
               ciLevs=(0.025, 0.975),
               ):
-    """Get data frame with curve fitting parameters."""
-    if ic50_error not in {None, 'fit_stdev'}:
-        raise ValueError(f"invalid ic50_error of {ic50_error}")
+        if ic50_error not in {None, 'fit_stdev'}:
+            raise ValueError(f"invalid ic50_error of {ic50_error}")
 
-    ics = tuple(ics)
-    ic_colprefixes = [f"ic{{:.{ics_precision}f}}".format(ic) for ic in ics]
-    if len(ic_colprefixes) != len(set(ic_colprefixes)):
-        raise ValueError('column names for ICXX not unique.\n'
-                         'Either you have duplicate entries in `ics` '
-                         'or you need to increase `ics_precision`.')
+        ics = tuple(ics)
+        ic_colprefixes = [f"ic{{:.{ics_precision}f}}".format(ic) for ic in ics]
+        if len(ic_colprefixes) != len(set(ic_colprefixes)):
+            raise ValueError('column names for ICXX not unique.\n'
+                             'Either you have duplicate entries in `ics` '
+                             'or you need to increase `ics_precision`.')
 
-    key = (average_only, ics, ics_precision, ic50_error, bootstrap_ci)
+        key = (average_only, ics, ics_precision, ic50_error, bootstrap_ci)
 
-    if key not in self._fitparams:
-        d = collections.defaultdict(list)
-        params = ['midpoint', 'slope', 'top', 'bottom']
-        for btProtein in self.bioassay:
-            for population in self.populations[btProtein]:
-                replicates = self.replicates[(btProtein, population)]
-                nreplicates = sum(r != 'average' for r in replicates)
-                assert nreplicates == len(replicates) - 1
-                if average_only:
-                    replicates = ['average']
-                for replicate in replicates:
-                    curve = self.getCurve(btProtein=btProtein,
-                                          population=population,
-                                          replicate=replicate
-                                          )
-                    d['btProtein'].append(btProtein)
-                    d['population'].append(population)
-                    d['replicate'].append(replicate)
-                    if replicate == 'average':
-                        d['nreplicates'].append(nreplicates)
-                    else:
-                        d['nreplicates'].append(float('nan'))
-
-                    # Reforço de segurança: skip se curva sem ponto
-                    if len(curve.cs) < 2:
-                        d['lc50'].append(None)
-                        d['lower_ci'].append(None)
-                        d['upper_ci'].append(None)
-                        continue
-
-                    # --- Cálculo do LC50 e CI ---
-                    try:
-                        if bootstrap_ci:
-                            self.calc_hill_bootstrap(curve, numBoot=numBoot, ciLevs=ciLevs)
-                            lc50_ci = self.calc_hill_conf_int(
-                                curve,
-                                parfunc=lambda coefs: numpy.array([coefs[0]]),
-                                civals=ciLevs
-                            )
-                            d['lc50'].append(lc50_ci[0, 1])
-                            d['lower_ci'].append(lc50_ci[0, 0])
-                            d['upper_ci'].append(lc50_ci[0, 2])
+        if key not in self._fitparams:
+            d = collections.defaultdict(list)
+            params = ['midpoint', 'slope', 'top', 'bottom']
+            for btProtein in self.bioassay:
+                for population in self.populations[btProtein]:
+                    replicates = self.replicates[(btProtein, population)]
+                    nreplicates = sum(r != 'average' for r in replicates)
+                    assert nreplicates == len(replicates) - 1
+                    if average_only:
+                        replicates = ['average']
+                    for replicate in replicates:
+                        curve = self.getCurve(btProtein=btProtein,
+                                              population=population,
+                                              replicate=replicate
+                                              )
+                        d['btProtein'].append(btProtein)
+                        d['population'].append(population)
+                        d['replicate'].append(replicate)
+                        if replicate == 'average':
+                            d['nreplicates'].append(nreplicates)
                         else:
-                            lc50 = curve.ic50(method='interpolate')
-                            if lc50 is None:
-                                d['lc50'].append(None)
-                                d['lower_ci'].append(None)
-                                d['upper_ci'].append(None)
+                            d['nreplicates'].append(float('nan'))
+
+                        # Reforço de segurança: skip se curva sem ponto
+                        if len(curve.cs) < 2:
+                            d['lc50'].append(None)
+                            d['lower_ci'].append(None)
+                            d['upper_ci'].append(None)
+                            continue
+
+                        # --- Cálculo do LC50 e CI ---
+                        try:
+                            if bootstrap_ci:
+                                self.calc_hill_bootstrap(curve, numBoot=numBoot, ciLevs=ciLevs)
+                                lc50_ci = self.calc_hill_conf_int(
+                                    curve,
+                                    parfunc=lambda coefs: numpy.array([coefs[0]]),
+                                    civals=ciLevs
+                                )
+                                d['lc50'].append(lc50_ci[0, 1])
+                                d['lower_ci'].append(lc50_ci[0, 0])
+                                d['upper_ci'].append(lc50_ci[0, 2])
                             else:
-                                d['lc50'].append(lc50)
-                                low, high = curve.ic50_confidence_interval()
-                                d['lower_ci'].append(low)
-                                d['upper_ci'].append(high)
-                    except Exception as e:
-                        d['lc50'].append(None)
-                        d['lower_ci'].append(None)
-                        d['upper_ci'].append(None)
+                                lc50 = curve.ic50(method='interpolate')
+                                if lc50 is None:
+                                    d['lc50'].append(None)
+                                    d['lower_ci'].append(None)
+                                    d['upper_ci'].append(None)
+                                else:
+                                    d['lc50'].append(lc50)
+                                    low, high = curve.ic50_confidence_interval()
+                                    d['lower_ci'].append(low)
+                                    d['upper_ci'].append(high)
+                        except Exception as e:
+                            d['lc50'].append(None)
+                            d['lower_ci'].append(None)
+                            d['upper_ci'].append(None)
 
-                    # ICXXs
-                    for ic, colprefix in zip(ics, ic_colprefixes):
-                        f = ic / 100
-                        d[colprefix].append(curve.icXX(f, method='bound'))
-                        d[f"{colprefix}_bound"].append(curve.icXX_bound(f))
-                        d[f"{colprefix}_str"].append(curve.icXX_str(f))
+                        # ICXXs
+                        for ic, colprefix in zip(ics, ic_colprefixes):
+                            f = ic / 100
+                            d[colprefix].append(curve.icXX(f, method='bound'))
+                            d[f"{colprefix}_bound"].append(curve.icXX_bound(f))
+                            d[f"{colprefix}_str"].append(curve.icXX_str(f))
 
-                    if ic50_error == 'fit_stdev':
-                        d['ic50_error'].append(curve.ic50_stdev())
+                        if ic50_error == 'fit_stdev':
+                            d['ic50_error'].append(curve.ic50_stdev())
 
-                    for param in params:
-                        d[param].append(getattr(curve, param))
+                        for param in params:
+                            d[param].append(getattr(curve, param))
 
-        ic_cols = []
-        for prefix in ic_colprefixes:
-            ic_cols += [prefix, f"{prefix}_bound", f"{prefix}_str"]
-        if ic50_error == 'fit_stdev':
-            ic_cols.append('ic50_error')
+            ic_cols = []
+            for prefix in ic_colprefixes:
+                ic_cols += [prefix, f"{prefix}_bound", f"{prefix}_str"]
+            if ic50_error == 'fit_stdev':
+                ic_cols.append('ic50_error')
 
-        self._fitparams[key] = (
-            pd.DataFrame(d)
-            [['btProtein', 'population', 'replicate', 'nreplicates', 'lc50', 'lower_ci', 'upper_ci']
-             + ic_cols + params]
-            .assign(nreplicates=lambda x: (x['nreplicates'].astype('Int64')))
-        )
-
-    return self._fitparams[key]
+            self._fitparams[key] = (
+                pd.DataFrame(d)
+                [['btProtein', 'population', 'replicate', 'nreplicates', 'lc50', 'lower_ci', 'upper_ci']
+                + ic_cols + params]
+                .assign(nreplicates=lambda x: (x['nreplicates'].astype('Int64')))
+            )
+            return self._fitparams[key]
 
 
     def plotPop(self,
@@ -1216,75 +1214,74 @@ class CurveFits:
 
         return fig, axes
     
-   def calc_hill_bootstrap(self, hfit, ciLevs=(0.025, 0.975), numBoot=None):
-    """Estimate Bootstrapped Confidence Intervals on Hill Model Parameters."""
-    if not hasattr(hfit, 'fitted_values') or not hasattr(hfit, 'residuals'):
-        raise ValueError("Object 'hfit' must have 'fitted_values' and 'residuals' attributes.")
+    def calc_hill_bootstrap(self, hfit, ciLevs=(0.025, 0.975), numBoot=None):
+        """Estimate Bootstrapped Confidence Intervals on Hill Model Parameters."""
+        if not hasattr(hfit, 'fitted_values') or not hasattr(hfit, 'residuals'):
+            raise ValueError("Object 'hfit' must have 'fitted_values' and 'residuals' attributes.")
 
-    if hasattr(hfit, 'ciLevs'):
-        print("Warning: Existing confidence intervals will be replaced.")
-        hfit.ciLevs = None
-        hfit.ciCoefs = None
-        hfit.ciMat = None
+        if hasattr(hfit, 'ciLevs'):
+            print("Warning: Existing confidence intervals will be replaced.")
+            hfit.ciLevs = None
+            hfit.ciCoefs = None
+            hfit.ciMat = None
 
-    if numBoot is None:
-        numBoot = int(max(min(10 / (1 - ciLevs[1] + ciLevs[0]), 1000), 100))
+        if numBoot is None:
+            numBoot = int(max(min(10 / (1 - ciLevs[1] + ciLevs[0]), 1000), 100))
 
-    bcoefs = numpy.empty((numBoot, 4))
-    for i in range(numBoot):
-        # Generate bootstrap sample
-        bact = hfit.fitted_values + numpy.random.choice(hfit.residuals, size=len(hfit.residuals), replace=True)
+        bcoefs = numpy.empty((numBoot, 4))
+        for i in range(numBoot):
+            # Generate bootstrap sample
+            bact = hfit.fitted_values + numpy.random.choice(hfit.residuals, size=len(hfit.residuals), replace=True)
 
-        # Refit the Hill model with the bootstrap sample
-        try:
-            tfit = HillCurve(
-                hfit.cs,
-                bact,
-                inhibitory_or_mortality=hfit._inhibitory_or_mortality,
-                fixbottom=hfit.bottom,
-                fixtop=hfit.top
-            )
-            bcoefs[i, :] = tfit.coefficients
-        except Exception as e:
-            bcoefs[i, :] = numpy.nan  # Flag this row as invalid
+            # Refit the Hill model with the bootstrap sample
+            try:
+                tfit = HillCurve(
+                    hfit.cs,
+                    bact,
+                    inhibitory_or_mortality=hfit._inhibitory_or_mortality,
+                    fixbottom=hfit.bottom,
+                    fixtop=hfit.top
+                )
+                bcoefs[i, :] = tfit.coefficients
+            except Exception as e:
+                bcoefs[i, :] = numpy.nan  # Flag this row as invalid
 
-    bcoefs = bcoefs[~numpy.isnan(bcoefs).any(axis=1)]
-    if bcoefs.shape[0] < 10:
-        raise RuntimeError("Too few successful bootstrap fits to calculate confidence intervals.")
+        bcoefs = bcoefs[~numpy.isnan(bcoefs).any(axis=1)]
+        if bcoefs.shape[0] < 10:
+            raise RuntimeError("Too few successful bootstrap fits to calculate confidence intervals.")
 
-    qmat = numpy.quantile(bcoefs, ciLevs, axis=0)
+        qmat = numpy.quantile(bcoefs, ciLevs, axis=0)
 
-    hfit.ciLevs = ciLevs
-    hfit.ciCoefs = bcoefs
-    hfit.ciMat = qmat
+        hfit.ciLevs = ciLevs
+        hfit.ciCoefs = bcoefs
+        hfit.ciMat = qmat
 
-    return hfit
+        return hfit
 
 
-  def calc_hill_conf_int(self, hfit, parfunc, civals=None):
-      """Estimate a confidence interval on a Hill model property using bootstrapped coefficients."""
-      if not hasattr(hfit, 'ciCoefs'):
-          raise ValueError("Input 'hfit' must have bootstrapped coefficients. Run `calc_hill_bootstrap` first.")
-      if not callable(parfunc):
-          raise ValueError("Input 'parfunc' must be a callable function.")
-  
-      if civals is None:
-          civals = hfit.ciLevs
-  
-      outval = parfunc(hfit.coefficients)
-      outmat = numpy.empty((len(outval), len(hfit.ciCoefs)))
-  
-      for b in range(hfit.ciCoefs.shape[0]):
-          outmat[:, b] = parfunc(hfit.ciCoefs[b, :])
-  
-      outci = numpy.quantile(outmat, civals, axis=1)
-      fullout = numpy.column_stack((outci[0, :], outval, outci[1, :]))
-  
-      return fullout
+    def calc_hill_conf_int(self, hfit, parfunc, civals=None):
+        """Estimate a confidence interval on a Hill model property using bootstrapped coefficients."""
+        if not hasattr(hfit, 'ciCoefs'):
+            raise ValueError("Input 'hfit' must have bootstrapped coefficients. Run `calc_hill_bootstrap` first.")
+        if not callable(parfunc):
+            raise ValueError("Input 'parfunc' must be a callable function.")
+    
+        if civals is None:
+            civals = hfit.ciLevs
+    
+        outval = parfunc(hfit.coefficients)
+        outmat = numpy.empty((len(outval), len(hfit.ciCoefs)))
+    
+        for b in range(hfit.ciCoefs.shape[0]):
+            outmat[:, b] = parfunc(hfit.ciCoefs[b, :])
+    
+        outci = numpy.quantile(outmat, civals, axis=1)
+        fullout = numpy.column_stack((outci[0, :], outval, outci[1, :]))
+    
+        return fullout
 
 
 
     def fit_hill_model(self, cs, fs, *args, **kwargs):
         return HillCurve(cs, fs, *args, **kwargs)
-
 
