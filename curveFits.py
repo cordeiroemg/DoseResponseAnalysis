@@ -209,80 +209,114 @@ class CurveFits:
         return lc50, lower_ci, upper_ci
 
     def fitParams(self,
-                  *,
-                  average_only=True,
-                  ics=(50,),
-                  ics_precision=0,
-                  ic50_error=None,
-                  ):
-        """Get data frame with curve fitting parameters."""
-        if ic50_error not in {None, 'fit_stdev'}:
-            raise ValueError(f"invalid ic50_error of {ic50_error}")
+              *,
+              average_only=True,
+              ics=(50,),
+              ics_precision=0,
+              ic50_error=None,
+              bootstrap_ci=True,
+              numBoot=None,
+              ciLevs=(0.025, 0.975),
+              ):
+    """Get data frame with curve fitting parameters."""
+    if ic50_error not in {None, 'fit_stdev'}:
+        raise ValueError(f"invalid ic50_error of {ic50_error}")
 
-        ics = tuple(ics)
-        ic_colprefixes = [f"ic{{:.{ics_precision}f}}".format(ic) for ic in ics]
-        if len(ic_colprefixes) != len(set(ic_colprefixes)):
-            raise ValueError('column names for ICXX not unique.\n'
-                             'Either you have duplicate entries in `ics` '
-                             'or you need to increase `ics_precision`.')
+    ics = tuple(ics)
+    ic_colprefixes = [f"ic{{:.{ics_precision}f}}".format(ic) for ic in ics]
+    if len(ic_colprefixes) != len(set(ic_colprefixes)):
+        raise ValueError('column names for ICXX not unique.\n'
+                         'Either you have duplicate entries in `ics` '
+                         'or you need to increase `ics_precision`.')
 
-        key = (average_only, ics, ics_precision, ic50_error)
+    key = (average_only, ics, ics_precision, ic50_error, bootstrap_ci)
 
-        if key not in self._fitparams:
-            d = collections.defaultdict(list)
-            params = ['midpoint', 'slope', 'top', 'bottom']
-            for btProtein in self.bioassay:
-                for population in self.populations[btProtein]:
-                    replicates = self.replicates[(btProtein, population)]
-                    nreplicates = sum(r != 'average' for r in replicates)
-                    assert nreplicates == len(replicates) - 1
-                    if average_only:
-                        replicates = ['average']
-                    for replicate in replicates:
-                        curve = self.getCurve(btProtein=btProtein,
-                                              population=population,
-                                              replicate=replicate
-                                              )
-                        d['btProtein'].append(btProtein)
-                        d['population'].append(population)
-                        d['replicate'].append(replicate)
-                        if replicate == 'average':
-                            d['nreplicates'].append(nreplicates)
+    if key not in self._fitparams:
+        d = collections.defaultdict(list)
+        params = ['midpoint', 'slope', 'top', 'bottom']
+        for btProtein in self.bioassay:
+            for population in self.populations[btProtein]:
+                replicates = self.replicates[(btProtein, population)]
+                nreplicates = sum(r != 'average' for r in replicates)
+                assert nreplicates == len(replicates) - 1
+                if average_only:
+                    replicates = ['average']
+                for replicate in replicates:
+                    curve = self.getCurve(btProtein=btProtein,
+                                          population=population,
+                                          replicate=replicate
+                                          )
+                    d['btProtein'].append(btProtein)
+                    d['population'].append(population)
+                    d['replicate'].append(replicate)
+                    if replicate == 'average':
+                        d['nreplicates'].append(nreplicates)
+                    else:
+                        d['nreplicates'].append(float('nan'))
+
+                    # Reforço de segurança: skip se curva sem ponto
+                    if len(curve.cs) < 2:
+                        d['lc50'].append(None)
+                        d['lower_ci'].append(None)
+                        d['upper_ci'].append(None)
+                        continue
+
+                    # --- Cálculo do LC50 e CI ---
+                    try:
+                        if bootstrap_ci:
+                            self.calc_hill_bootstrap(curve, numBoot=numBoot, ciLevs=ciLevs)
+                            lc50_ci = self.calc_hill_conf_int(
+                                curve,
+                                parfunc=lambda coefs: numpy.array([coefs[0]]),
+                                civals=ciLevs
+                            )
+                            d['lc50'].append(lc50_ci[0, 1])
+                            d['lower_ci'].append(lc50_ci[0, 0])
+                            d['upper_ci'].append(lc50_ci[0, 2])
                         else:
-                            d['nreplicates'].append(float('nan'))
+                            lc50 = curve.ic50(method='interpolate')
+                            if lc50 is None:
+                                d['lc50'].append(None)
+                                d['lower_ci'].append(None)
+                                d['upper_ci'].append(None)
+                            else:
+                                d['lc50'].append(lc50)
+                                low, high = curve.ic50_confidence_interval()
+                                d['lower_ci'].append(low)
+                                d['upper_ci'].append(high)
+                    except Exception as e:
+                        d['lc50'].append(None)
+                        d['lower_ci'].append(None)
+                        d['upper_ci'].append(None)
 
-                        # Get LC50 and confidence intervals
-                        lc50, lower_ci, upper_ci = self.get_lc50_and_ci(btProtein, population, replicate)
-                        d['lc50'].append(lc50)
-                        d['lower_ci'].append(lower_ci)
-                        d['upper_ci'].append(upper_ci)
+                    # ICXXs
+                    for ic, colprefix in zip(ics, ic_colprefixes):
+                        f = ic / 100
+                        d[colprefix].append(curve.icXX(f, method='bound'))
+                        d[f"{colprefix}_bound"].append(curve.icXX_bound(f))
+                        d[f"{colprefix}_str"].append(curve.icXX_str(f))
 
-                        for ic, colprefix in zip(ics, ic_colprefixes):
-                            f = ic / 100
-                            d[colprefix].append(curve.icXX(f, method='bound'))
-                            d[f"{colprefix}_bound"].append(curve.icXX_bound(f))
-                            d[f"{colprefix}_str"].append(curve.icXX_str(f))
-                        if ic50_error == 'fit_stdev':
-                            d['ic50_error'].append(curve.ic50_stdev())
-                        for param in params:
-                            d[param].append(getattr(curve, param))
-            # Create DataFrame and include new columns
-            ic_cols = []
-            for prefix in ic_colprefixes:
-                ic_cols += [prefix, f"{prefix}_bound", f"{prefix}_str"]
-            if ic50_error == 'fit_stdev':
-                ic_cols.append('ic50_error')
-            # Create DataFrame and include new columns
-            self._fitparams[key] = (
-                pd.DataFrame(d)
-                [['btProtein', 'population', 'replicate', 'nreplicates', 'lc50', 'lower_ci', 'upper_ci']
-                 + ic_cols + params]
-                .assign(nreplicates=lambda x: (x['nreplicates']
-                                               .astype('Int64'))
-                        )
-            )
+                    if ic50_error == 'fit_stdev':
+                        d['ic50_error'].append(curve.ic50_stdev())
 
-        return self._fitparams[key]
+                    for param in params:
+                        d[param].append(getattr(curve, param))
+
+        ic_cols = []
+        for prefix in ic_colprefixes:
+            ic_cols += [prefix, f"{prefix}_bound", f"{prefix}_str"]
+        if ic50_error == 'fit_stdev':
+            ic_cols.append('ic50_error')
+
+        self._fitparams[key] = (
+            pd.DataFrame(d)
+            [['btProtein', 'population', 'replicate', 'nreplicates', 'lc50', 'lower_ci', 'upper_ci']
+             + ic_cols + params]
+            .assign(nreplicates=lambda x: (x['nreplicates'].astype('Int64')))
+        )
+
+    return self._fitparams[key]
+
 
     def plotPop(self,
                 *,
