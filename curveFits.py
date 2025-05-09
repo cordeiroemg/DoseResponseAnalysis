@@ -4,6 +4,8 @@ import collections
 import math
 import matplotlib.pyplot as plt
 import pandas as pd
+from hillcurve_test import HillCurve
+
 
 """
 ============
