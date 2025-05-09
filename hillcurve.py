@@ -1,11 +1,4 @@
 
-    """
-==================
-hillcurve
-==================
-
-Defines :class:`HillCurve` for fitting dose-response curves.
-"""
 
 import collections
 import math
@@ -700,4 +693,3 @@ def concentrationRange(bottom, top, npoints=200, extend=0.1):
     top = logtop + logrange * extend
 
     return numpy.logspace(bottom, top, npoints)
-
