@@ -4,6 +4,7 @@ import collections
 import math
 import matplotlib.pyplot as plt
 import pandas as pd
+import numpy
 from hillcurve_test import HillCurve
 
 
@@ -1180,3 +1181,58 @@ class CurveFits:
             fig.tight_layout()
 
         return fig, axes
+    
+    def calc_hill_bootstrap(self, hfit, ciLevs=(0.025, 0.975), numBoot=None):
+        """Estimate Bootstrapped Confidence Intervals on Hill Model Parameters."""
+        if not hasattr(hfit, 'fitted_values') or not hasattr(hfit, 'residuals'):
+            raise ValueError("Object 'hfit' must have 'fitted_values' and 'residuals' attributes.")
+
+        if hasattr(hfit, 'ciLevs'):
+            print("Warning: Existing confidence intervals will be replaced.")
+            hfit.ciLevs = None
+            hfit.ciCoefs = None
+            hfit.ciMat = None
+
+        if numBoot is None:
+            numBoot = max(min(10 / (1 - ciLevs[1] + ciLevs[0]), 1000), 100)
+
+        bcoefs = numpy.empty((numBoot, 4))
+        for i in range(numBoot):
+            # Generate bootstrap sample
+            bact = hfit.fitted_values + numpy.random.choice(hfit.residuals, size=len(hfit.residuals), replace=True)
+            # Fit the Hill model with the bootstrap sample
+            try:
+                tfit = self.fit_hill_model(hfit.cs, bact, hfit.model, hfit.weights, hfit.coefficients, hfit.direction, hfit.pbounds[0], hfit.pbounds[1])
+                bcoefs[i, :] = tfit.coefficients
+            except Exception as e:
+                continue  # Skip if fitting fails
+
+        bcoefs = bcoefs[~numpy.isnan(bcoefs).any(axis=1)]
+        qmat = numpy.quantile(bcoefs, ciLevs, axis=0)
+
+        hfit.ciLevs = ciLevs
+        hfit.ciCoefs = bcoefs
+        hfit.ciMat = qmat
+
+        return hfit
+
+    def calc_hill_conf_int(self, hfit, parfunc, civals=None):
+        """Estimate a confidence interval on a Hill model property."""
+        if not hasattr(hfit, 'ciCoefs'):
+            raise ValueError("Input 'hfit' must have bootstrapped coefficients.")
+        if not callable(parfunc):
+            raise ValueError("Input 'parfunc' must be a callable function.")
+
+        if civals is None:
+            civals = hfit.ciLevs
+
+        outval = parfunc(hfit.coefficients)
+        outmat = numpy.empty((len(outval), len(hfit.ciCoefs)))
+
+        for b in range(hfit.ciCoefs.shape[0]):
+            outmat[:, b] = parfunc(hfit.ciCoefs[b, :])
+
+        outci = numpy.quantile(outmat, civals, axis=1)
+        fullout = numpy.column_stack((outci[0, :], outval, outci[1, :]))
+
+        return fullout
