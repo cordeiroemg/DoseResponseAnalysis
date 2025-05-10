@@ -478,7 +478,7 @@ class CurveFits:
                                   'label': population if significant else None,
                                   'color': color,
                                   'marker': marker,
-                                  'linestyle': '-' if significant else None,
+                                  'linestyle' : '-' if significant else None,
                                   })
                 if population in btProtein_shared_populations:
                     shared_curvelist.append(curvelist[-1])
@@ -1111,30 +1111,12 @@ class CurveFits:
                     iylabel = ylabel[i]
                 else:
                     iylabel = None
-                
-                if curvedict.get('linestyle') is not None:
-                    curvedict['curve'].plot(ax=ax,
+                curvedict['curve'].plot(ax=ax,
                                         xlabel=ixlabel,
                                         ylabel=iylabel,
                                         yticklocs=yticklocs,
-                                        color = curvedict['color'],
-                                        marker = curvedict['marker'],
-                                        markersize = markersize,
-                                        linewidth = linewidth,
-                                        linestyle = curvedict['linestyle'],
-                                        #**kwargs,
+                                        **kwargs,
                                         )
-                else:
-                    data = curvedict['curve'].dataframe('measured')
-                    ax.errorbar(x = 'concentration',
-                                y = 'measurement',
-                                yerr = 'stderr' if 'stderr' in data.columns else None,
-                                data = data,
-                                fmt = curvedict['marker'],
-                                color = curvedict['color'],
-                                markersize = markersize,
-                                label = None,)
-
                 label = curvedict['label']
                 if label:
                     handle = Line2D(xdata=[],
@@ -1322,11 +1304,9 @@ class CurveFits:
     def fit_hill_model(self, cs, fs, *args, **kwargs):
         return HillCurve(cs, fs, *args, **kwargs)
     
-    def is_significant_model(self, curve, min_r2 = 0.5, min_slope = 0.5):
+    def is_significant_model(self, curve, min_r2 = 0.5):
         try:
             if numpy.isnan(curve.r_squared) or curve.r_squared < min_r2:
-                return False
-            if abs(curve.slope) < min_slope:
                 return False
             if curve.ic50(method ='interpolate') is None:
                 return False
