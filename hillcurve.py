@@ -14,7 +14,7 @@ class HillCurve:
                  cs,
                  fs,
                  *,
-                 inhibitory_or_mortality ='inhibitory',
+                 inhibitory_or_mortality ='mortality',
                  fs_stderr=None,
                  fixbottom=0,
                  fixtop=1,
@@ -34,11 +34,11 @@ class HillCurve:
         self.fs = self.fs[self.cs.argsort()]
         self.cs = self.cs[self.cs.argsort()]
 
-        if inhibitory_or_mortality == 'inhibitory':
+        if inhibitory_or_mortality == 'mortality':
             if self.fs[0] < self.fs[-1] and (self.fs[0] < 0.3 and
                                              self.fs[-1] > 0.7):
                 warnings.warn('`f` increases with concentration, consider `inhibitory_or_mortality="mortality"')
-        elif inhibitory_or_mortality == 'mortality':
+        elif inhibitory_or_mortality == 'inhibitory':
             if self.fs[0] > self.fs[-1] and (self.fs[0] > 0.7 and self.fs[-1] < 0.3):
                 warnings.warn('`f` decreases with concentration, consider '
                               '`inhibitory_or_mortality="inhibitory"')
