@@ -249,7 +249,7 @@ class CurveFits:
                         d['population'].append(population)
                         d['replicate'].append(replicate)
                         if replicate == 'average':
-                            d['nreplicates'].append(nreplicates)
+                            d['n_obs'].append(nreplicates)
 
                         # Contagem adicional de estatísticas
                         idata = self.df.query(f"({self.btProtein_col} == @btProtein) & "
@@ -259,7 +259,7 @@ class CurveFits:
                         d['n_obs'].append(len(idata))
                         d['n_valid_mortality'].append(idata[self.fracmort_col].notnull().sum())
                         else:
-                            d['nreplicates'].append(float('nan'))
+                            d['n_obs'].append(float('nan'))
 
                         # Reforço de segurança: skip se curva sem ponto
                         if len(curve.cs) < 2:
@@ -331,9 +331,9 @@ class CurveFits:
 
             self._fitparams[key] = (
                 pd.DataFrame(d)
-                [['btProtein', 'population', 'replicate', 'nreplicates', 'lc50', 'lower_ci', 'upper_ci'] + ['n_doses', 'n_obs', 'n_valid_mortality']
+                [['btProtein', 'population', 'replicate', 'n_obs', 'lc50', 'lower_ci', 'upper_ci'] + ['n_doses', 'n_obs', 'n_valid_mortality']
                 + ic_cols + params + ['r_squared', 'chi2', 'chi2_dof', 'chi2_pval', 'rmse']]
-                .assign(nreplicates=lambda x: (x['nreplicates'].astype('Int64')))
+                .assign(nreplicates=lambda x: (x['n_obs'].astype('Int64')))
             )
             return self._fitparams[key]
 
