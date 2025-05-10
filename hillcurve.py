@@ -1,5 +1,3 @@
-
-
 import collections
 import math
 import warnings
@@ -7,6 +5,7 @@ import matplotlib.pyplot as plt
 import numpy
 import pandas as pd
 import scipy.optimize
+from scipy.stats import chi2
 
 
 class HillCurve:
@@ -631,6 +630,33 @@ class HillCurve:
         upper_bound = ic50 + z_value * midpoint_stdev
 
         return lower_bound, upper_bound
+    
+    def chi_squared_test(self):
+        observed = self.fs
+        expected = self.fitted_values
+
+        if numpy.any(expected == 0):
+            raise ValueError("Expected values contain zero - cannot compute chi-squared.")
+        
+        chi2_stat = numpy.sum((observed - expected)**2 /expected)
+
+        n_params = 2 # midpoint and slope
+        if not isinstance(self.bottom, (int, float)):
+            n_param += 1
+        if not isinstance(self.top, (int, float)):
+            n_param += 1
+
+        dof = len(observed) - n_params
+        if dof <= 0:
+            return {'chi2': numpy.nan, 'dof': dof, 'p_value': numpy.nan}
+        
+        p_value = 1 - chi2.cdf(chi2_stat, dof)
+
+        return{
+            'chi2': chi2_stat,
+            'dof': dof,
+            'p_value': p_value
+        }
 
     @property
     def fitted_values(self):
@@ -643,7 +669,21 @@ class HillCurve:
     @property
     def coefficients(self):
         return numpy.array([self.midpoint, self.slope, self.bottom, self.top])
+    
+    @property
+    def r_squared(self):
+        y_true = self.fs
+        y_pred = self.fitted_values
+        ss_res = numpy.sum((y_true - y_pred)**2)
+        ss_tot = numpy.sum((y_true - numpy.mean(y_true))**2)
+        if ss_tot == 0:
+            return numpy.nan
+        return 1 - (ss_res/ ss_tot)
 
+    @property
+    def rmse(self):
+        residual = self.fs - self.fitted_values
+        return numpy.sqrt(numpy.mean(residual **2))
 
 
 def concentrationRange(bottom, top, npoints=200, extend=0.1):
