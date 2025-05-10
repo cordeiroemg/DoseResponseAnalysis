@@ -300,6 +300,20 @@ class CurveFits:
 
                         for param in params:
                             d[param].append(getattr(curve, param))
+                        d['r_squared'].append(curve.r_squared)
+                        d['rmse'].append(curve.rmse)
+
+                        try:
+                            chi2_result = curve.chi_squared_test()
+                            d['chi2'].append(chi2_result['chi2'])
+                            d['chi2_dof'].append(chi2_result['dof'])
+                            d['chi2_pval'].append(chi2_result['p_value'])
+
+                        except Exception as e:
+                            d['chi2'].append(numpy.nan)
+                            d['chi2_dof'].append(numpy.nan)
+                            d['chi2_pval'].append(numpy.nan)
+
 
             ic_cols = []
             for prefix in ic_colprefixes:
@@ -310,7 +324,7 @@ class CurveFits:
             self._fitparams[key] = (
                 pd.DataFrame(d)
                 [['btProtein', 'population', 'replicate', 'nreplicates', 'lc50', 'lower_ci', 'upper_ci']
-                + ic_cols + params]
+                + ic_cols + params + ['r_squared', 'chi2', 'chi2_dof', 'chi2_pval', 'rmse']]
                 .assign(nreplicates=lambda x: (x['nreplicates'].astype('Int64')))
             )
             return self._fitparams[key]
@@ -454,12 +468,17 @@ class CurveFits:
                 else:
                     color = colors[ipopulation]
                     marker = markers[ipopulation]
+
+                curve = self.getCurve(btProtein = btProtein, population = population, replicate = 'average')
+                significant = self.is_significant_model(curve)
+
                 curvelist.append({'btProtein': btProtein,
                                   'population': population,
                                   'replicate': 'average',
-                                  'label': population,
+                                  'label': population if significant else None,
                                   'color': color,
                                   'marker': marker,
+                                  'linestyle': '-' if significant else None,
                                   })
                 if population in btProtein_shared_populations:
                     shared_curvelist.append(curvelist[-1])
@@ -1092,12 +1111,30 @@ class CurveFits:
                     iylabel = ylabel[i]
                 else:
                     iylabel = None
-                curvedict['curve'].plot(ax=ax,
+                
+                if curvedict.get('linestyle') is not None:
+                    curvedict['curve'].plot(ax=ax,
                                         xlabel=ixlabel,
                                         ylabel=iylabel,
                                         yticklocs=yticklocs,
-                                        **kwargs,
+                                        color = curvedict['color'],
+                                        marker = curvedict['marker'],
+                                        markersize = markersize,
+                                        linewidth = linewidth,
+                                        linestyle = curvedict['linestyle'],
+                                        #**kwargs,
                                         )
+                else:
+                    data = curvedict['curve'].dataframe('measured')
+                    ax.errorbar(x = 'concentration',
+                                y = 'measurement',
+                                yerr = 'stderr' if 'stderr' in data.columns else None,
+                                data = data,
+                                fmt = curvedict['marker'],
+                                color = curvedict['color'],
+                                markersize = markersize,
+                                label = None,)
+
                 label = curvedict['label']
                 if label:
                     handle = Line2D(xdata=[],
@@ -1284,4 +1321,16 @@ class CurveFits:
 
     def fit_hill_model(self, cs, fs, *args, **kwargs):
         return HillCurve(cs, fs, *args, **kwargs)
+    
+    def is_significant_model(self, curve, min_r2 = 0.5, min_slope = 0.5):
+        try:
+            if numpy.isnan(curve.r_squared) or curve.r_squared < min_r2:
+                return False
+            if abs(curve.slope) < min_slope:
+                return False
+            if curve.ic50(method ='interpolate') is None:
+                return False
+            return True
+        except Exception:
+            return False
 
